@@ -1,0 +1,8 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Update the apt cache
+      ansible.builtin.apt:
+        update_cache: true

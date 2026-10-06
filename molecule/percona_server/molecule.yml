@@ -1,0 +1,24 @@
+---
+prerun: false
+dependency:
+  name: galaxy
+  enabled: false
+driver:
+  name: docker
+platforms:
+  - name: ps-node1
+    image: ubuntu:26.04
+    dockerfile: ../Dockerfile.j2
+    privileged: true
+    cgroupns_mode: private
+    tmpfs:
+      - /run
+      - /tmp
+    command: /sbin/init
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: ${MOLECULE_PROJECT_DIRECTORY}/roles
+verifier:
+  name: ansible
