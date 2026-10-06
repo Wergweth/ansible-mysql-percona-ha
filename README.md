@@ -1,5 +1,7 @@
 # ansible-mysql-percona-ha
 
+[![CI](https://github.com/Wergweth/ansible-mysql-percona-ha/actions/workflows/ci.yml/badge.svg)](https://github.com/Wergweth/ansible-mysql-percona-ha/actions/workflows/ci.yml)
+
 An Ansible project that deploys one of two highly available MySQL variants based on Percona on three Ubuntu nodes:
 
 | | Variant A - `semi-sync` | Variant B - `pxc` |

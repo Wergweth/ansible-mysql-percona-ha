@@ -1,0 +1,9 @@
+---
+- name: Converge
+  hosts: all
+  vars_files:
+    - ../../inventories/group_vars/all/mysql.yml
+    - ../../inventories/group_vars/percona.yml
+    - vars/main.yml
+  roles:
+    - percona_server

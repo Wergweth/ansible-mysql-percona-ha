@@ -1,0 +1,62 @@
+---
+name: CI
+
+"on":
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install ansible-core, ansible-lint, yamllint
+        run: pip install ansible-core ansible-lint yamllint
+
+      - name: Install collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Dummy vault password
+        # ansible.cfg points to .vault_pass; secrets are not needed for syntax checks
+        run: echo ci > .vault_pass
+
+      - name: yamllint
+        run: yamllint .
+
+      - name: ansible-lint
+        run: ansible-lint
+
+  molecule:
+    needs: lint
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - percona_server
+    env:
+      PY_COLORS: "1"
+      ANSIBLE_FORCE_COLOR: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install ansible-core and Molecule
+        run: pip install ansible-core molecule "molecule-plugins[docker]"
+
+      - name: Install collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Dummy vault password
+        run: echo ci > .vault_pass
+
+      - name: molecule test
+        run: molecule test -s ${{ matrix.scenario }}

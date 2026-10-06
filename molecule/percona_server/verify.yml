@@ -1,0 +1,25 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Collect service facts
+      ansible.builtin.service_facts:
+
+    - name: The mysql service is running and enabled
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.services['mysql.service'].state == 'running'
+          - ansible_facts.services['mysql.service'].status == 'enabled'
+
+    - name: Read server variables
+      ansible.builtin.command: >-
+        mysql -NBe "SELECT @@gtid_mode, @@read_only, @@super_read_only,
+        @@innodb_flush_log_at_trx_commit, @@sync_binlog, @@rpl_semi_sync_replica_enabled"
+      register: percona_server_verify
+      changed_when: false
+
+    - name: The server matches the role design
+      ansible.builtin.assert:
+        that: percona_server_verify.stdout.split('\t') == ['ON', '1', '1', '1', '1', '1']
+        fail_msg: "gtid_mode, read_only, super_read_only, flush_log, sync_binlog, semisync_replica = {{ percona_server_verify.stdout }}"

@@ -1,0 +1,4 @@
+---
+# test-only overrides: a container sees all host memory
+mysql_server_id: 1
+mysql_buffer_pool_pct: 10
