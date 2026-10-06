@@ -1,0 +1,142 @@
+---
+- name: Vault secrets are set and have no special characters
+  # Passwords go into URLs, cnf files and SQL without escaping.
+  # Generate a suitable one: openssl rand -hex 16
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item) is match('^[A-Za-z0-9_-]+$')
+      - lookup('ansible.builtin.vars', item) != 'CHANGE_ME'
+    fail_msg: "{{ item }}: set your own password of letters, digits, '-' and '_' (openssl rand -hex 16)"
+    quiet: true
+  loop: "{{ query('ansible.builtin.varnames', '^vault_') }}"
+  run_once: true
+
+- name: Set the hostname from the inventory
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Remove the hostname mapping to 127.0.1.1
+  # Debian convention for machines without a permanent address. With it, a node
+  # resolving its own name goes to loopback and does not match the MySQL account masks.
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s'
+    state: absent
+
+- name: Add lab nodes to /etc/hosts
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} ANSIBLE MANAGED percona-lab"
+    block: |
+      {% for host in groups['all'] | sort %}
+      {{ hostvars[host]['ansible_host'] }} {{ host }}
+      {% endfor %}
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Kernel parameters for the DBMS
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/60-mysql.conf
+    reload: true
+  loop: "{{ common_sysctl | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}={{ item.value }}"
+
+- name: Check whether the swap file exists
+  ansible.builtin.stat:
+    path: "{{ common_swap_file }}"
+  register: common_swap
+
+- name: Create and enable swap
+  when: not common_swap.stat.exists
+  block:
+    - name: Allocate space for swap
+      ansible.builtin.command: "fallocate -l {{ common_swap_size_mb }}M {{ common_swap_file }}"
+      args:
+        creates: "{{ common_swap_file }}"
+
+    - name: Swap file permissions
+      ansible.builtin.file:
+        path: "{{ common_swap_file }}"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Format swap
+      ansible.builtin.command: "mkswap {{ common_swap_file }}"
+      changed_when: true
+
+    - name: Enable swap
+      ansible.builtin.command: "swapon {{ common_swap_file }}"
+      changed_when: true
+
+- name: Add swap to fstab
+  ansible.posix.mount:
+    path: none
+    src: "{{ common_swap_file }}"
+    fstype: swap
+    opts: sw
+    state: present
+
+- name: Unit that disables Transparent Huge Pages
+  # THP causes latency spikes and memory overuse for a DBMS
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/disable-thp.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Disable Transparent Huge Pages
+      DefaultDependencies=no
+      After=sysinit.target local-fs.target
+      Before=mysql.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+      ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload systemd
+
+- name: Enable and start disable-thp
+  ansible.builtin.systemd_service:
+    name: disable-thp
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Drop-in directories for mysqld services
+  # mysql@.service - the template PXC uses to start mysql@bootstrap
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ common_mysql_units }}"
+
+- name: Open files limit for mysqld
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item }}.d/limits.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      LimitNOFILE={{ common_mysql_nofile }}
+  loop: "{{ common_mysql_units }}"
+  notify: Reload systemd
+
+- name: Apply systemd changes before installing the DBMS
+  ansible.builtin.meta: flush_handlers

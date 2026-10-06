@@ -1,0 +1,26 @@
+---
+common_packages:
+  - curl
+  - gnupg
+  - ca-certificates
+  - chrony
+  - sysstat
+  - htop
+  - jq
+  - python3-pymysql
+
+# Safety net against OOM during load tests.
+common_swap_file: /swapfile
+common_swap_size_mb: 2048
+
+common_sysctl:
+  vm.swappiness: 1
+  vm.zone_reclaim_mode: 0
+  fs.aio-max-nr: 1048576
+  net.core.somaxconn: 4096
+
+# mysqld open files limit
+common_mysql_nofile: 1000000
+common_mysql_units:
+  - mysql.service
+  - mysql@.service

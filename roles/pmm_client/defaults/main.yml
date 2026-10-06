@@ -1,0 +1,9 @@
+---
+# the role uses the agent config (id and server address) to tell whether the node is registered
+pmm_client_agent_config: /usr/local/percona/pmm/config/pmm-agent.yaml
+pmm_client_server_address: "{{ hostvars[pmm_server_host]['ansible_host'] }}:{{ pmm_server_port }}"
+# MySQL service in PMM: via socket, QAN from the Percona extended slow log
+pmm_client_mysql_user: pmm
+pmm_client_query_source: slowlog
+# cluster label in dashboards; set in the variant's group_vars
+pmm_client_cluster: "{{ pmm_cluster_name | default('lab') }}"

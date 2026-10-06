@@ -1,0 +1,134 @@
+---
+- name: Percona Distribution for MySQL repository
+  ansible.builtin.import_role:
+    name: percona_repo
+  vars:
+    percona_repo_extra:
+      - "{{ orchestrator_repo }}"
+
+- name: Install Orchestrator
+  ansible.builtin.apt:
+    name: "{{ orchestrator_packages }}"
+    state: present
+
+- name: Find the binary
+  ansible.builtin.stat:
+    path: "{{ orchestrator_bin }}"
+  register: orchestrator_bin_stat
+
+- name: The binary is where expected
+  ansible.builtin.assert:
+    that: orchestrator_bin_stat.stat.exists
+    fail_msg: >-
+      {{ orchestrator_bin }} not found. Check `dpkg -L percona-orchestrator`
+      and fix orchestrator_home.
+    quiet: true
+
+- name: Data directory
+  ansible.builtin.file:
+    path: "{{ orchestrator_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Credentials for connecting to the topology
+  ansible.builtin.template:
+    src: orchestrator-topology.cnf.j2
+    dest: "{{ orchestrator_topology_cnf }}"
+    owner: root
+    group: root
+    mode: "0600"
+  diff: false
+  notify: Restart orchestrator
+
+- name: Orchestrator config
+  ansible.builtin.template:
+    src: orchestrator.conf.json.j2
+    dest: "{{ orchestrator_config }}"
+    owner: root
+    group: root
+    mode: "0600"
+    validate: jq empty %s
+  diff: false
+  notify: Restart orchestrator
+
+- name: ProxySQL fencing hook
+  ansible.builtin.template:
+    src: orchestrator-proxysql-fence.sh.j2
+    dest: /usr/local/bin/orchestrator-proxysql-fence
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: API address and credentials for orchestrator-client
+  ansible.builtin.template:
+    src: orchestrator-client.env.j2
+    dest: /etc/orchestrator-client.env
+    owner: root
+    group: root
+    mode: "0600"
+  diff: false
+
+- name: The orc wrapper for orchestrator-client
+  ansible.builtin.template:
+    src: orc.sh.j2
+    dest: /usr/local/bin/orc
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Systemd unit
+  ansible.builtin.template:
+    src: orchestrator.service.j2
+    dest: /etc/systemd/system/orchestrator.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart orchestrator
+
+- name: Orchestrator service
+  ansible.builtin.systemd_service:
+    name: orchestrator
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Apply the pending restart
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the API and read the list of clusters
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ orchestrator_port }}/api/clusters"
+    url_username: "{{ orchestrator_http_user }}"
+    url_password: "{{ orchestrator_http_password }}"
+    force_basic_auth: true
+    return_content: true
+  register: orchestrator_clusters
+  retries: 15
+  delay: 2
+  until: orchestrator_clusters.status == 200
+
+- name: Discover the cluster
+  # Orchestrator returns an empty cluster list as null
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ orchestrator_port }}/api/discover/{{ orchestrator_seed_host }}/3306"
+    url_username: "{{ orchestrator_http_user }}"
+    url_password: "{{ orchestrator_http_password }}"
+    force_basic_auth: true
+  when: orchestrator_clusters.json | default([], true) | length == 0
+  changed_when: true
+
+- name: Wait until Orchestrator sees all nodes
+  ansible.builtin.command: /usr/local/bin/orc -c topology -i {{ orchestrator_seed_host }}:3306
+  register: orchestrator_topology
+  changed_when: false
+  retries: 12
+  delay: 5
+  until: >-
+    orchestrator_topology.rc == 0 and
+    orchestrator_topology.stdout_lines | length == orchestrator_expected_instances | int
+
+- name: Topology as seen by Orchestrator
+  ansible.builtin.debug:
+    var: orchestrator_topology.stdout_lines

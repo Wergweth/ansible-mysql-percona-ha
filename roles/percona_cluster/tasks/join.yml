@@ -1,0 +1,11 @@
+---
+# Joining a running cluster.
+# A new node gets a full copy of the data (SST from a donor), a returning one - IST.
+- name: Start mysqld and enable it at boot
+  ansible.builtin.systemd_service:
+    name: mysql
+    state: started
+    enabled: true
+
+- name: Wait for the node to join
+  ansible.builtin.import_tasks: wait_synced.yml

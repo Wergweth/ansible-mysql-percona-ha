@@ -1,0 +1,85 @@
+---
+# Variant B: Percona XtraDB Cluster 8.4 (Galera), ProxySQL (single writer,
+# reads from the other nodes), PMM.
+#
+#   ansible-playbook -i inventories/pxc.yml playbooks/pxc.yml
+
+- name: OS preparation
+  hosts: all
+  become: true
+  any_errors_fatal: true
+  tags: [os]
+  roles:
+    - common
+
+- name: PXC - packages, certificates, configuration
+  hosts: pxc
+  become: true
+  any_errors_fatal: true
+  tags: [mysql]
+  roles:
+    - percona_cluster
+
+- name: PXC - first node bootstraps a new cluster
+  hosts: pxc[0]
+  become: true
+  gather_facts: false
+  tags: [mysql]
+  tasks:
+    - name: Bootstrap if there is no cluster yet
+      ansible.builtin.import_role:
+        name: percona_cluster
+        tasks_from: bootstrap
+      when: not percona_cluster_running | bool
+
+- name: PXC - other nodes join one at a time
+  hosts: pxc[1:]
+  become: true
+  gather_facts: false
+  serial: 1
+  tags: [mysql]
+  tasks:
+    - name: Join the node
+      ansible.builtin.import_role:
+        name: percona_cluster
+        tasks_from: join
+
+- name: PXC - first node to normal mode
+  hosts: pxc[0]
+  become: true
+  gather_facts: false
+  tags: [mysql]
+  tasks:
+    - name: Switch from bootstrap to normal mode
+      ansible.builtin.import_role:
+        name: percona_cluster
+        tasks_from: finalize
+
+- name: Databases and users
+  hosts: pxc[0]
+  become: true
+  gather_facts: false
+  tags: [mysql]
+  roles:
+    - mysql_objects
+
+- name: ProxySQL
+  hosts: proxysql
+  become: true
+  tags: [proxysql]
+  roles:
+    - proxysql
+
+- name: PMM Server
+  hosts: pmm_server
+  become: true
+  tags: [pmm]
+  roles:
+    - pmm_server
+
+- name: PMM Client
+  hosts: pxc
+  become: true
+  tags: [pmm]
+  roles:
+    - pmm_client

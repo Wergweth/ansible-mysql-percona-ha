@@ -1,0 +1,8 @@
+---
+pmm_server_image: percona/pmm-server:3
+pmm_server_container: pmm-server
+pmm_server_volume: pmm-data
+
+# Restricted network: Docker Hub is not directly reachable. If the image is not on the node,
+# the role loads it from an archive (docker save | gzip), otherwise tries docker pull.
+pmm_server_image_archive: "{{ lab_artifacts_dir }}/pmm-server-3.tar.gz"

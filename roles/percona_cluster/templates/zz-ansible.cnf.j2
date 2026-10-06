@@ -1,0 +1,40 @@
+# {{ ansible_managed }}
+# Variant B: Percona XtraDB Cluster 8.4 (Galera, synchronous replication).
+# Overrides settings from mysqld.cnf.
+[mysqld]
+
+# --- identity --------------------------------------------------------------
+server_id                           = {{ mysql_server_id }}
+report_host                         = {{ inventory_hostname }}
+
+# --- common settings (group_vars/all/mysql.yml) ----------------------------
+{% for key, value in mysql_config_common.items() %}
+{{ '%-35s' | format(key) }} = {{ value }}
+{% endfor %}
+
+# --- durability -------------------------------------------------------------
+innodb_flush_log_at_trx_commit      = 1
+sync_binlog                         = 1
+
+# --- Galera requirements ---------------------------------------------------
+default_storage_engine              = InnoDB
+innodb_autoinc_lock_mode            = 2
+pxc_strict_mode                     = ENFORCING
+
+# --- cluster ---------------------------------------------------------------
+wsrep_provider                      = /usr/lib/galera4/libgalera_smm.so
+wsrep_cluster_name                  = {{ percona_cluster_name }}
+wsrep_cluster_address               = gcomm://{{ groups['pxc'] | map('extract', hostvars, 'ansible_host') | join(',') }}
+wsrep_node_name                     = {{ inventory_hostname }}
+wsrep_node_address                  = {{ ansible_host }}
+wsrep_sst_method                    = xtrabackup-v2
+wsrep_applier_threads               = {{ percona_cluster_applier_threads }}
+wsrep_log_conflicts                 = ON
+
+# --- cluster traffic and SST encryption ------------------------------------
+# pxc_encrypt_cluster_traffic takes the certificates from these same parameters;
+# they must be identical on all nodes
+pxc_encrypt_cluster_traffic         = ON
+ssl_ca                              = {{ percona_cluster_certs_dir }}/ca.pem
+ssl_cert                            = {{ percona_cluster_certs_dir }}/server-cert.pem
+ssl_key                             = {{ percona_cluster_certs_dir }}/server-key.pem

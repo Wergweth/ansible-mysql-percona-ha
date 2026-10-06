@@ -1,0 +1,84 @@
+---
+- name: Install pmm-client
+  ansible.builtin.apt:
+    name: pmm-client
+    state: present
+
+- name: The pmm-agent service is started
+  ansible.builtin.systemd_service:
+    name: pmm-agent
+    state: started
+    enabled: true
+
+- name: Read the agent config
+  ansible.builtin.slurp:
+    src: "{{ pmm_client_agent_config }}"
+  register: pmm_client_agent_cfg
+  failed_when: false
+  no_log: true  # the config contains the server password
+
+- name: Is the agent already registered with the right PMM Server?
+  ansible.builtin.set_fact:
+    pmm_client_registered: >-
+      {{ cfg.id | default('', true) | length > 0
+         and (cfg.server | default({}, true)).address | default('') == pmm_client_server_address }}
+  vars:
+    cfg: >-
+      {{ (pmm_client_agent_cfg.content | b64decode | from_yaml)
+         if pmm_client_agent_cfg.content is defined else {} }}
+
+- name: Register the agent with PMM Server
+  ansible.builtin.command:
+    argv:
+      - pmm-admin
+      - config
+      - --force
+      - --server-insecure-tls
+      - "--server-url={{ pmm_client_server_url }}"
+      - "{{ ansible_host }}"
+      - generic
+      - "{{ inventory_hostname }}"
+  vars:
+    pmm_client_server_url: >-
+      https://{{ pmm_admin_user | urlencode }}:{{ pmm_admin_password | urlencode }}@{{
+      pmm_client_server_address }}
+  when: not pmm_client_registered | bool
+  register: pmm_client_config
+  changed_when: pmm_client_config.rc == 0
+  failed_when: false
+  throttle: 1
+  retries: 3
+  delay: 10
+  until: pmm_client_config.rc == 0
+  # argv contains the password, so the output is hidden; the next task shows the error
+  no_log: true
+
+- name: The agent is registered with PMM Server
+  ansible.builtin.assert:
+    that: pmm_client_config.rc == 0
+    fail_msg: >-
+      pmm-admin config: {{ (pmm_client_config.stderr ~ ' ' ~ pmm_client_config.stdout)
+      | replace(pmm_admin_password, '***') | trim }}
+    quiet: true
+  when: pmm_client_config is not skipped
+
+- name: List agent services
+  ansible.builtin.command: pmm-admin list
+  register: pmm_client_services
+  changed_when: false
+
+- name: Add the MySQL service
+  ansible.builtin.command:
+    argv:
+      - pmm-admin
+      - add
+      - mysql
+      - "--username={{ pmm_client_mysql_user }}"
+      - "--password={{ (mysql_users | selectattr('name', 'eq', pmm_client_mysql_user) | first).password }}"
+      - "--socket={{ mysql_socket }}"
+      - "--query-source={{ pmm_client_query_source }}"
+      - "--cluster={{ pmm_client_cluster }}"
+      - "--service-name={{ inventory_hostname }}"
+  when: pmm_client_services.stdout is not search('MySQL\s+' ~ inventory_hostname ~ '\s')
+  changed_when: true
+  no_log: true

@@ -1,0 +1,24 @@
+---
+# Orchestrator 3.2.6 from Percona Distribution for MySQL 8.4 (pdps-84-lts)
+orchestrator_repo: pdps-84-lts
+orchestrator_packages:
+  - percona-orchestrator
+  - percona-orchestrator-cli
+  - percona-orchestrator-client
+orchestrator_home: /usr/local/orchestrator
+orchestrator_bin: "{{ orchestrator_home }}/orchestrator"
+orchestrator_client_bin: "{{ orchestrator_home }}/resources/bin/orchestrator-client"
+orchestrator_config: /etc/orchestrator.conf.json
+orchestrator_topology_cnf: /etc/orchestrator-topology.cnf
+orchestrator_data_dir: /var/lib/orchestrator
+orchestrator_port: 3000
+
+orchestrator_http_user: admin
+orchestrator_http_password: "{{ vault_orchestrator_http_password }}"
+orchestrator_topology_user: orchestrator
+orchestrator_topology_password: "{{ vault_orchestrator_password }}"
+
+# after a recovery the cluster is blocked from further automatic failovers for this long. Clear it: orc -c ack-all-recoveries
+orchestrator_recovery_block_seconds: 300
+orchestrator_seed_host: "{{ groups['source'] | first }}"
+orchestrator_expected_instances: "{{ groups['percona'] | length }}"

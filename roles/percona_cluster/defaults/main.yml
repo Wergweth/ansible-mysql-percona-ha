@@ -1,0 +1,19 @@
+---
+# percona-xtrabackup-84 for SST is pulled in as a dependency of the cluster package
+percona_cluster_packages:
+  - percona-xtradb-cluster
+  - percona-toolkit
+  - sysbench
+
+percona_cluster_name: "{{ pxc_cluster_name | default('pxc-lab') }}"
+percona_cluster_applier_threads: 4
+
+# Cluster traffic encryption (Galera and SST) is on by default in PXC 8.4
+# and requires IDENTICAL certificates on all nodes. The CA and the node certificate
+# are generated once on the control machine and copied to the nodes.
+percona_cluster_certs_dir: /etc/mysql/certs
+percona_cluster_certs_local_dir: "{{ lab_artifacts_dir }}/pxc-certs"
+percona_cluster_certs_days: 3650
+
+# how long to wait for a node to become Synced (SST of a large dataset takes a while)
+percona_cluster_sync_timeout: 900

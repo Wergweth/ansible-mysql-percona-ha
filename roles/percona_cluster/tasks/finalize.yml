@@ -1,0 +1,40 @@
+---
+# After bootstrap the first node is restarted in normal mode.
+# The other nodes keep quorum while it is away (it comes back via IST).
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Switch the first node from bootstrap to normal mode
+  when: >-
+    ansible_facts.services['mysql@bootstrap.service'] is defined
+    and ansible_facts.services['mysql@bootstrap.service'].state == 'running'
+  block:
+    - name: Stop mysql@bootstrap
+      ansible.builtin.systemd_service:
+        name: mysql@bootstrap
+        state: stopped
+
+    - name: Start mysql in normal mode
+      ansible.builtin.systemd_service:
+        name: mysql
+        state: started
+
+- name: The node is running and mysqld is enabled at boot
+  ansible.builtin.systemd_service:
+    name: mysql
+    state: started
+    enabled: true
+
+- name: Wait for the first node to come back
+  ansible.builtin.import_tasks: wait_synced.yml
+
+- name: Read the cluster state
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query: "SHOW GLOBAL STATUS WHERE Variable_name IN ('wsrep_cluster_size', 'wsrep_cluster_status', 'wsrep_incoming_addresses')"
+  register: percona_cluster_summary
+  changed_when: false
+
+- name: Cluster state
+  ansible.builtin.debug:
+    msg: "{{ percona_cluster_summary.query_result[0] | items2dict(key_name='Variable_name', value_name='Value') }}"

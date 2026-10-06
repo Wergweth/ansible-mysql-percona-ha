@@ -1,0 +1,51 @@
+---
+# Common to both variants: paths, databases and mysqld settings.
+mysql_socket: /var/run/mysqld/mysqld.sock
+mysql_conf_file: /etc/mysql/mysql.conf.d/zz-ansible.cnf
+mysql_log_dir: /var/log/mysql
+mysql_buffer_pool_pct: 60
+
+mysql_databases:
+  - sbtest
+
+# Go into [mysqld] of both variants as is.
+mysql_config_common:
+  # network
+  bind_address: 0.0.0.0
+  max_connections: 300
+  skip_name_resolve: "ON"
+
+  # InnoDB
+  innodb_buffer_pool_size: "{{ (ansible_facts['memtotal_mb'] * mysql_buffer_pool_pct / 100) | int }}M"
+  innodb_redo_log_capacity: 512M
+  innodb_flush_method: O_DIRECT
+  innodb_flush_neighbors: 0
+  # the 8.4 default (10000) is meant for NVMe
+  innodb_io_capacity: 200
+  innodb_io_capacity_max: 2000
+  innodb_print_all_deadlocks: "ON"
+  innodb_buffer_pool_dump_at_shutdown: "ON"
+  innodb_buffer_pool_load_at_startup: "ON"
+
+  # binlog
+  log_bin: mysql-bin
+  binlog_format: ROW
+  binlog_expire_logs_seconds: 604800
+
+  # Percona extended slow log: data source for QAN in PMM
+  slow_query_log: "ON"
+  slow_query_log_file: "{{ mysql_log_dir }}/slow.log"
+  long_query_time: 0
+  log_slow_rate_limit: 1
+  log_slow_rate_type: query
+  log_slow_verbosity: full
+  log_slow_admin_statements: "ON"
+
+  # observability
+  performance_schema: "ON"
+  userstat: "ON"
+
+  # timeouts
+  lock_wait_timeout: 60
+  innodb_lock_wait_timeout: 50
+  wait_timeout: 600

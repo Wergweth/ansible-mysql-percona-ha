@@ -1,0 +1,25 @@
+---
+# Only for an already formed cluster and strictly one node at a time: the next node
+# is restarted once the previous one is back to Synced. Restarting all nodes
+# at once would break the cluster. On a fresh deployment the nodes are started
+# in the right order by the bootstrap/join tasks, and this handler is skipped.
+- name: Restart mysql
+  ansible.builtin.shell: |
+    set -euo pipefail
+    # a node left in bootstrap mode after an interrupted run
+    # is restarted with the same unit: mysql.service will not start next to it
+    unit=mysql
+    systemctl is-active --quiet mysql@bootstrap && unit=mysql@bootstrap
+    systemctl restart "$unit"
+    for _ in $(seq {{ (percona_cluster_sync_timeout | int / 5) | int }}); do
+      state=$(mysql -NBe "SHOW GLOBAL STATUS LIKE 'wsrep_local_state_comment'" 2>/dev/null | cut -f2) || state=
+      [ "$state" = "Synced" ] && exit 0
+      sleep 5
+    done
+    echo "node did not return to Synced within {{ percona_cluster_sync_timeout }} s" >&2
+    exit 1
+  args:
+    executable: /bin/bash
+  throttle: 1
+  changed_when: true
+  when: percona_cluster_running | bool

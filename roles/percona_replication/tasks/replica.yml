@@ -1,0 +1,63 @@
+---
+- name: Read the replica state
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query: "SHOW REPLICA STATUS"
+  register: percona_replication_replica
+  changed_when: false
+
+- name: The replica must point to the source from the inventory
+  # Protection against running with an outdated inventory after a failover
+  ansible.builtin.assert:
+    that: >-
+      percona_replication_replica.query_result[0] | length == 0 or
+      percona_replication_replica.query_result[0][0].Source_Host == repl_source_host
+    fail_msg: >-
+      {{ inventory_hostname }} replicates from
+      {{ (percona_replication_replica.query_result[0] | first | default({})).Source_Host | default('?') }},
+      but the source in the inventory is {{ repl_source_host }}.
+      Looks like a failover happened: fix the source/replica groups in the inventory.
+    quiet: true
+
+- name: Connect the replica to the source
+  # GTID with auto-positioning: no binlog coordinates needed
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query:
+      - >-
+        CHANGE REPLICATION SOURCE TO
+        SOURCE_HOST = '{{ repl_source_host }}',
+        SOURCE_PORT = 3306,
+        SOURCE_USER = '{{ repl_user }}',
+        SOURCE_PASSWORD = '{{ repl_password }}',
+        SOURCE_AUTO_POSITION = 1,
+        SOURCE_SSL = 1,
+        GET_SOURCE_PUBLIC_KEY = 1,
+        SOURCE_CONNECT_RETRY = {{ repl_connect_retry }},
+        SOURCE_RETRY_COUNT = {{ repl_retry_count }},
+        SOURCE_HEARTBEAT_PERIOD = {{ repl_heartbeat_period }}
+      - "START REPLICA"
+  when: percona_replication_replica.query_result[0] | length == 0
+  changed_when: true
+  no_log: true
+
+- name: Wait until both replication threads are running
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query: "SHOW REPLICA STATUS"
+  register: percona_replication_check
+  until: >-
+    percona_replication_check.query_result[0] | length > 0
+    and percona_replication_check.query_result[0][0].Replica_IO_Running == 'Yes'
+    and percona_replication_check.query_result[0][0].Replica_SQL_Running == 'Yes'
+  retries: 24
+  delay: 5
+  changed_when: false
+
+- name: Replica state
+  ansible.builtin.debug:
+    msg: >-
+      source={{ percona_replication_check.query_result[0][0].Source_Host }}
+      IO={{ percona_replication_check.query_result[0][0].Replica_IO_Running }}
+      SQL={{ percona_replication_check.query_result[0][0].Replica_SQL_Running }}
+      behind={{ percona_replication_check.query_result[0][0].Seconds_Behind_Source }}

@@ -1,0 +1,22 @@
+---
+# --- connection --------------------------------------------------------------
+ansible_user: oleg
+
+# --- network -----------------------------------------------------------------
+# Host mask for MySQL accounts. Defaults to the /24 of the first node,
+# so when addresses change it is enough to edit host_vars/.
+lab_subnet_mask: >-
+  {{ (hostvars[groups['all'] | sort | first]['ansible_host'].split('.')[:3] | join('.')) ~ '.%' }}
+
+# --- directory with large files that are not stored in git ------------------
+lab_artifacts_dir: "{{ playbook_dir }}/../artifacts"
+
+# --- PMM ---------------------------------------------------------------------
+pmm_server_host: "{{ groups['pmm_server'] | first }}"
+pmm_server_port: 8443
+pmm_admin_user: admin
+pmm_admin_password: "{{ vault_pmm_admin_password }}"
+
+# --- ProxySQL ----------------------------------------------------------------
+proxysql_admin_password: "{{ vault_proxysql_admin_password }}"
+proxysql_monitor_password: "{{ vault_proxysql_monitor_password }}"

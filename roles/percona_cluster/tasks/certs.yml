@@ -1,0 +1,95 @@
+---
+- name: Check whether cluster certificates already exist
+  ansible.builtin.stat:
+    path: "{{ percona_cluster_certs_local_dir }}/server-cert.pem"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  register: percona_cluster_certs_local
+
+- name: Generate the CA and the node certificate on the control machine
+  when: not percona_cluster_certs_local.stat.exists
+  delegate_to: localhost
+  become: false
+  run_once: true
+  block:
+    - name: Certificates directory
+      ansible.builtin.file:
+        path: "{{ percona_cluster_certs_local_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: CA key
+      community.crypto.openssl_privatekey:
+        path: "{{ percona_cluster_certs_local_dir }}/ca-key.pem"
+        size: 2048
+        mode: "0600"
+
+    - name: CA certificate signing request
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ percona_cluster_certs_local_dir }}/ca-key.pem"
+        common_name: "{{ percona_cluster_name }} CA"
+        use_common_name_for_san: false
+        basic_constraints:
+          - "CA:TRUE"
+        basic_constraints_critical: true
+        key_usage:
+          - keyCertSign
+          - cRLSign
+        key_usage_critical: true
+      register: percona_cluster_ca_csr
+
+    - name: Self-signed CA certificate
+      community.crypto.x509_certificate:
+        path: "{{ percona_cluster_certs_local_dir }}/ca.pem"
+        csr_content: "{{ percona_cluster_ca_csr.csr }}"
+        privatekey_path: "{{ percona_cluster_certs_local_dir }}/ca-key.pem"
+        provider: selfsigned
+        selfsigned_not_after: "+{{ percona_cluster_certs_days }}d"
+        mode: "0644"
+
+    - name: Node key
+      community.crypto.openssl_privatekey:
+        path: "{{ percona_cluster_certs_local_dir }}/server-key.pem"
+        size: 2048
+        mode: "0600"
+
+    - name: Node certificate signing request
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ percona_cluster_certs_local_dir }}/server-key.pem"
+        common_name: "{{ percona_cluster_name }} node"
+      register: percona_cluster_server_csr
+
+    - name: Node certificate signed by the CA
+      community.crypto.x509_certificate:
+        path: "{{ percona_cluster_certs_local_dir }}/server-cert.pem"
+        csr_content: "{{ percona_cluster_server_csr.csr }}"
+        provider: ownca
+        ownca_path: "{{ percona_cluster_certs_local_dir }}/ca.pem"
+        ownca_privatekey_path: "{{ percona_cluster_certs_local_dir }}/ca-key.pem"
+        ownca_not_after: "+{{ percona_cluster_certs_days }}d"
+        mode: "0644"
+
+- name: Certificates directory on the node
+  ansible.builtin.file:
+    path: "{{ percona_cluster_certs_dir }}"
+    state: directory
+    owner: mysql
+    group: mysql
+    mode: "0750"
+
+- name: Copy certificates to the nodes
+  # the CA key stays on the control machine only
+  ansible.builtin.copy:
+    src: "{{ percona_cluster_certs_local_dir }}/{{ item.name }}"
+    dest: "{{ percona_cluster_certs_dir }}/{{ item.name }}"
+    owner: mysql
+    group: mysql
+    mode: "{{ item.mode }}"
+  loop:
+    - { name: ca.pem, mode: "0644" }
+    - { name: server-cert.pem, mode: "0644" }
+    - { name: server-key.pem, mode: "0600" }
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Restart mysql

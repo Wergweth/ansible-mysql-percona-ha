@@ -1,0 +1,61 @@
+# {{ ansible_managed }}
+# Variant A: Percona Server 8.4, source + replicas.
+#
+# The file describes node capabilities, not its role: every node starts
+# read-only. The playbook opens writes on the source at runtime,
+# after a failover - Orchestrator. A restarted former source will not
+# start writing on its own (fail closed).
+[mysqld]
+
+# --- identity --------------------------------------------------------------
+server_id                           = {{ mysql_server_id }}
+report_host                         = {{ inventory_hostname }}
+
+# --- common settings (group_vars/all/mysql.yml) ----------------------------
+{% for key, value in mysql_config_common.items() %}
+{{ '%-35s' | format(key) }} = {{ value }}
+{% endfor %}
+
+# --- GTID -------------------------------------------------------------------
+gtid_mode                           = ON
+enforce_gtid_consistency            = ON
+log_replica_updates                 = ON
+
+# --- durability -------------------------------------------------------------
+{% if promotion_candidate %}
+# source candidate: after promotion it must be just as durable
+innodb_flush_log_at_trx_commit      = 1
+sync_binlog                         = 1
+{% else %}
+# not a candidate: after an OS crash the node is rebuilt, no fsync per commit needed
+innodb_flush_log_at_trx_commit      = 2
+sync_binlog                         = 0
+{% endif %}
+
+# --- writes closed at startup (fail closed) --------------------------------
+read_only                           = ON
+super_read_only                     = ON
+
+# --- replication apply (in effect while the node is a replica) -------------
+relay_log_recovery                  = ON
+replica_parallel_workers            = 4
+replica_preserve_commit_order       = ON
+replica_net_timeout                 = {{ repl_net_timeout }}
+log_slow_replica_statements         = ON
+{% if semisync_enabled %}
+
+# --- semi-sync: both plugins on every node ---------------------------------
+plugin_load_add                     = semisync_source.so
+plugin_load_add                     = semisync_replica.so
+# only candidates acknowledge: an ACK from a node that will never become the source
+# does not protect a transaction during a failover
+rpl_semi_sync_replica_enabled       = {{ 'ON' if promotion_candidate else 'OFF' }}
+# the source side is enabled at runtime together with opening writes
+rpl_semi_sync_source_enabled        = OFF
+rpl_semi_sync_source_timeout        = {{ semisync_timeout_ms }}
+rpl_semi_sync_source_wait_for_replica_count = {{ semisync_wait_for_replica_count }}
+rpl_semi_sync_source_wait_point     = AFTER_SYNC
+# no acknowledging replicas - switch to async at once, without waiting for the timeout
+# on every commit; semi-sync turns back on by itself when a replica connects
+rpl_semi_sync_source_wait_no_replica = OFF
+{% endif %}

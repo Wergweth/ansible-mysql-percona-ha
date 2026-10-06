@@ -1,0 +1,30 @@
+---
+- name: Install Percona Server and tools
+  ansible.builtin.apt:
+    name: "{{ percona_server_packages }}"
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: The mysqld config
+  ansible.builtin.template:
+    src: zz-ansible.cnf.j2
+    dest: "{{ mysql_conf_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart mysql
+
+- name: The mysql service is started and enabled
+  ansible.builtin.systemd_service:
+    name: mysql
+    state: started
+    enabled: true
+
+- name: Apply the new config before working with the database
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the socket
+  ansible.builtin.wait_for:
+    path: "{{ mysql_socket }}"
+    timeout: 60

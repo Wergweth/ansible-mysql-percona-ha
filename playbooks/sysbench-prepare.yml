@@ -1,0 +1,46 @@
+---
+# sysbench test data through ProxySQL. Works for both variants.
+#
+#   ansible-playbook playbooks/sysbench-prepare.yml
+#   ansible-playbook -i inventories/pxc.yml playbooks/sysbench-prepare.yml
+
+- name: Prepare sysbench data
+  hosts: proxysql
+  become: true
+  gather_facts: false
+  vars:
+    sysbench_tables: 10
+    sysbench_table_size: 500000
+    sysbench_password: "{{ (mysql_users | selectattr('name', 'eq', 'sb') | first).password }}"
+  tasks:
+    - name: Check whether the data is already prepared
+      ansible.mysql.mysql_query:
+        login_host: 127.0.0.1
+        login_port: "{{ proxysql_mysql_port | default(6033) }}"
+        login_user: sb
+        login_password: "{{ sysbench_password }}"
+        query: >-
+          SELECT COUNT(*) AS tables FROM information_schema.tables
+          WHERE table_schema = 'sbtest' AND table_name LIKE 'sbtest%'
+      register: sysbench_existing
+      changed_when: false
+
+    - name: Generate tables
+      ansible.builtin.command:
+        argv:
+          - sysbench
+          - oltp_read_write
+          - --mysql-host=127.0.0.1
+          - "--mysql-port={{ proxysql_mysql_port | default(6033) }}"
+          - --mysql-user=sb
+          - "--mysql-password={{ sysbench_password }}"
+          - --mysql-db=sbtest
+          - "--tables={{ sysbench_tables }}"
+          - "--table-size={{ sysbench_table_size }}"
+          - --threads=4
+          - prepare
+      when: sysbench_existing.query_result[0][0].tables | int < sysbench_tables
+      changed_when: true
+      no_log: true
+      async: 3600
+      poll: 15

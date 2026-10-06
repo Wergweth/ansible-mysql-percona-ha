@@ -1,0 +1,61 @@
+{# The complete desired state of ProxySQL; applied whenever the file changes.
+   Do not add SQL comments (--) here: the ProxySQL admin interface responds to them with an error. #}
+
+{# ---------- variables ---------- #}
+UPDATE global_variables SET variable_value='{{ proxysql_monitor_user }}'     WHERE variable_name='mysql-monitor_username';
+UPDATE global_variables SET variable_value='{{ proxysql_monitor_password }}' WHERE variable_name='mysql-monitor_password';
+UPDATE global_variables SET variable_value='{{ proxysql_server_version }}'   WHERE variable_name='mysql-server_version';
+{# reads from replicas only: the writer is not placed in the reader group #}
+UPDATE global_variables SET variable_value='false' WHERE variable_name='mysql-monitor_writer_is_also_reader';
+LOAD MYSQL VARIABLES TO RUNTIME;
+SAVE MYSQL VARIABLES TO DISK;
+
+{# ---------- backends ---------- #}
+DELETE FROM mysql_servers;
+DELETE FROM mysql_replication_hostgroups;
+DELETE FROM mysql_galera_hostgroups;
+{% if proxysql_backend_mode == 'replication' %}
+{# Nodes are put into the reader group; ProxySQL moves the writer
+   to the writer group by the actual read_only. #}
+{% for host in groups[proxysql_backend_group] %}
+INSERT INTO mysql_servers (hostgroup_id, hostname, port, use_ssl, max_replication_lag, comment)
+VALUES ({{ proxysql_reader_hostgroup }}, '{{ host }}', 3306, 1, {{ proxysql_max_replication_lag }}, 'async');
+{% endfor %}
+INSERT INTO mysql_replication_hostgroups (writer_hostgroup, reader_hostgroup, check_type, comment)
+VALUES ({{ proxysql_writer_hostgroup }}, {{ proxysql_reader_hostgroup }}, 'read_only', 'async + semi-sync');
+{% elif proxysql_backend_mode == 'galera' %}
+{# All nodes go into the writer group; ProxySQL keeps one there (max_writers=1),
+   moves the rest to backup_writer and, with writer_is_also_reader=2, to readers.
+   Extra writers show up as SHUNNED in the writer hg - this is expected.
+   The writer is chosen by ORDER BY weight DESC, hostname DESC: weight by inventory order
+   makes the first node of the group the writer, and the next one if it fails.
+   Nodes that are not Synced or have a queue > max_transactions_behind go offline. #}
+{% for host in groups[proxysql_backend_group] %}
+INSERT INTO mysql_servers (hostgroup_id, hostname, port, weight, use_ssl, comment)
+VALUES ({{ proxysql_writer_hostgroup }}, '{{ host }}', 3306, {{ 1000 - loop.index0 }}, 1, 'pxc');
+{% endfor %}
+INSERT INTO mysql_galera_hostgroups (writer_hostgroup, backup_writer_hostgroup, reader_hostgroup, offline_hostgroup,
+  active, max_writers, writer_is_also_reader, max_transactions_behind, comment)
+VALUES ({{ proxysql_writer_hostgroup }}, {{ proxysql_backup_writer_hostgroup }}, {{ proxysql_reader_hostgroup }}, {{ proxysql_offline_hostgroup }},
+  1, 1, 2, {{ proxysql_galera_max_transactions_behind }}, 'pxc');
+{% endif %}
+LOAD MYSQL SERVERS TO RUNTIME;
+SAVE MYSQL SERVERS TO DISK;
+
+{# ---------- application users ---------- #}
+DELETE FROM mysql_users;
+{% for u in mysql_users if u.name in proxysql_app_users %}
+INSERT INTO mysql_users (username, password, default_hostgroup, transaction_persistent, active)
+VALUES ('{{ u.name }}', '{{ u.password }}', {{ proxysql_writer_hostgroup }}, 1, 1);
+{% endfor %}
+LOAD MYSQL USERS TO RUNTIME;
+SAVE MYSQL USERS TO DISK;
+
+{# ---------- routing ---------- #}
+DELETE FROM mysql_query_rules;
+INSERT INTO mysql_query_rules (rule_id, active, match_digest, destination_hostgroup, apply, comment)
+VALUES (100, 1, '^SELECT.*FOR UPDATE', {{ proxysql_writer_hostgroup }}, 1, 'locking reads - to the writer');
+INSERT INTO mysql_query_rules (rule_id, active, match_digest, destination_hostgroup, apply, comment)
+VALUES (200, 1, '^SELECT', {{ proxysql_reader_hostgroup }}, 1, 'other reads - to replicas');
+LOAD MYSQL QUERY RULES TO RUNTIME;
+SAVE MYSQL QUERY RULES TO DISK;

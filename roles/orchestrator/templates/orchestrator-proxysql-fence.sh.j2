@@ -1,0 +1,32 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# PreFailoverProcesses: when the source fails, sets it to OFFLINE_HARD in ProxySQL.
+# Without this, a returning former source (read_only, no replication) would again get
+# reads: the ProxySQL lag check skips nodes without SHOW REPLICA STATUS.
+# graceful-master-takeover is skipped: the old source is alive and closed by read_only.
+# Always exit 0: a non-zero exit code from PreFailoverProcesses aborts the failover.
+#
+# Bring the node back after the incident is investigated:
+#   UPDATE mysql_servers SET status='ONLINE' WHERE hostname='...';
+#   LOAD MYSQL SERVERS TO RUNTIME; SAVE MYSQL SERVERS TO DISK;
+
+set -u
+failure_type="$1"
+command_hint="$2"
+failed_host="$3"
+
+[ "$command_hint" = "graceful-master-takeover" ] && exit 0
+case "$failure_type" in
+  DeadMaster|DeadMasterAndSomeReplicas) ;;
+  *) exit 0 ;;
+esac
+
+if mysql --defaults-file=/root/.proxysql-admin.cnf -e "
+  UPDATE mysql_servers SET status = 'OFFLINE_HARD' WHERE hostname = '${failed_host}';
+  LOAD MYSQL SERVERS TO RUNTIME;
+  SAVE MYSQL SERVERS TO DISK;"; then
+  logger -t orchestrator-hook "ProxySQL: ${failed_host} -> OFFLINE_HARD (${failure_type})"
+else
+  logger -t orchestrator-hook "ProxySQL: failed to remove ${failed_host} from routing"
+fi
+exit 0

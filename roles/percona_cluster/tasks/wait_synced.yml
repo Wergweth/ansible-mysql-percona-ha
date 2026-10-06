@@ -1,0 +1,14 @@
+---
+- name: Wait for the Synced state
+  # Joiner/Donor - state transfer in progress (SST/IST). No new nodes are added until Synced
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query: "SHOW GLOBAL STATUS LIKE 'wsrep_local_state_comment'"
+  register: percona_cluster_state
+  until: >-
+    percona_cluster_state.query_result is defined
+    and percona_cluster_state.query_result[0] | length > 0
+    and percona_cluster_state.query_result[0][0].Value == 'Synced'
+  retries: "{{ (percona_cluster_sync_timeout | int / 5) | int }}"
+  delay: 5
+  changed_when: false

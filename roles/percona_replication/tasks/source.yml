@@ -1,0 +1,40 @@
+---
+- name: Read the source state
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query:
+      - "SELECT @@GLOBAL.read_only AS ro"
+      - "SHOW REPLICA STATUS"
+      - "SHOW GLOBAL VARIABLES LIKE 'rpl_semi_sync_source_enabled'"
+  register: percona_replication_source
+  changed_when: false
+
+- name: A node from the source group must not be a replica
+  # Protection against running with an outdated inventory after a failover
+  ansible.builtin.assert:
+    that: percona_replication_source.query_result[1] | length == 0
+    fail_msg: >-
+      {{ inventory_hostname }} is the source in the inventory, but replicates from
+      {{ (percona_replication_source.query_result[1] | first | default({})).Source_Host | default('?') }}.
+      Looks like a failover happened: fix the source/replica groups in the inventory.
+    quiet: true
+
+- name: Enable semi-sync on the source side
+  # before opening writes: the very first transaction already waits for an acknowledgement
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query: "SET GLOBAL rpl_semi_sync_source_enabled = ON"
+  when:
+    - semisync_enabled
+    - percona_replication_source.query_result[2] | selectattr('Value', 'eq', 'ON') | list | length == 0
+  changed_when: true
+
+- name: Open writes on the source
+  # my.cnf starts every node read-only (fail closed); the source is opened explicitly
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query:
+      - "SET GLOBAL super_read_only = OFF"
+      - "SET GLOBAL read_only = OFF"
+  when: percona_replication_source.query_result[0][0].ro | int == 1
+  changed_when: true

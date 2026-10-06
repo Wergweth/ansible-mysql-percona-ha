@@ -1,0 +1,9 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# orchestrator-client with the API address and credentials from /etc/orchestrator-client.env
+#   sudo orc -c clusters
+#   sudo orc -c topology -i {{ orchestrator_seed_host }}:3306
+set -a
+. /etc/orchestrator-client.env
+set +a
+exec {{ orchestrator_client_bin }} "$@"

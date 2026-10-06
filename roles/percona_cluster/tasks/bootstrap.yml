@@ -1,0 +1,9 @@
+---
+# The first node bootstraps a new cluster. Runs only if no node is in Primary
+- name: Start the first node in bootstrap mode
+  ansible.builtin.systemd_service:
+    name: mysql@bootstrap
+    state: started
+
+- name: Wait for the first node to be ready
+  ansible.builtin.import_tasks: wait_synced.yml

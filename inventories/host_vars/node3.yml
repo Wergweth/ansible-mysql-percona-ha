@@ -1,0 +1,8 @@
+---
+# Node identity. Changes only when the VM is recreated.
+ansible_host: 192.168.68.57
+mysql_server_id: 3
+
+# Besides MySQL this node runs PMM Server (ClickHouse, PostgreSQL, VictoriaMetrics),
+# ProxySQL and Orchestrator: a smaller buffer pool to avoid OOM
+mysql_buffer_pool_pct: 30

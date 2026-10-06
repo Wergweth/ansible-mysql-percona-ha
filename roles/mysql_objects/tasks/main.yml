@@ -1,0 +1,50 @@
+---
+# Databases and accounts are created on one node, the others get them via replication (variant A) or Galera (variant B).
+# Users are created with explicit SQL, not the mysql_user module: for passwords the module relies on mysql_native_password, which is disabled in 8.4.
+
+- name: Create databases
+  ansible.mysql.mysql_db:
+    name: "{{ item }}"
+    state: present
+    encoding: utf8mb4
+    collation: utf8mb4_0900_ai_ci
+    login_unix_socket: "{{ mysql_socket }}"
+  loop: "{{ mysql_databases }}"
+
+- name: Get the list of existing users
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query: "SELECT CONCAT(user, '@', host) AS account FROM mysql.user"
+  register: mysql_objects_existing
+  changed_when: false
+
+- name: Create users
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query: "CREATE USER IF NOT EXISTS %s@%s IDENTIFIED BY %s"
+    positional_args:
+      - "{{ item.name }}"
+      - "{{ item.host }}"
+      - "{{ item.password }}"
+  loop: "{{ mysql_users }}"
+  loop_control:
+    label: "{{ item.name }}@{{ item.host }}"
+  when: (item.name ~ '@' ~ item.host) not in mysql_objects_accounts
+  changed_when: true
+  no_log: true
+  vars:
+    mysql_objects_accounts: "{{ mysql_objects_existing.query_result[0] | map(attribute='account') | list }}"
+
+- name: Grant privileges
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query: "GRANT {{ item.1.priv }} ON {{ item.1.db }} TO %s@%s"
+    positional_args:
+      - "{{ item.0.name }}"
+      - "{{ item.0.host }}"
+  loop: "{{ mysql_users | subelements('grants') }}"
+  loop_control:
+    label: "{{ item.0.name }}@{{ item.0.host }} -> {{ item.1.db }}"
+  changed_when: (item.0.name ~ '@' ~ item.0.host) not in mysql_objects_accounts
+  vars:
+    mysql_objects_accounts: "{{ mysql_objects_existing.query_result[0] | map(attribute='account') | list }}"

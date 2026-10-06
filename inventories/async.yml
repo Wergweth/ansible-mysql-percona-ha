@@ -1,0 +1,28 @@
+---
+# Variant A: Percona Server 8.4, source + replicas (GTID, semi-sync),
+# ProxySQL, Orchestrator, PMM.
+#
+# Node roles only. Addresses and server_id - in host_vars/.
+# After a failover only the source/replica group membership changes.
+all:
+  children:
+    percona:
+      children:
+        source:
+          hosts:
+            node1:
+        replica:
+          hosts:
+            node2:
+            node3:
+              # node3 hosts ProxySQL, Orchestrator and PMM: it will never become the source
+              promotion_candidate: false
+    proxysql:
+      hosts:
+        node3:
+    orchestrator:
+      hosts:
+        node3:
+    pmm_server:
+      hosts:
+        node3:

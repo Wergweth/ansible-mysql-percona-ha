@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Orchestrator: MySQL replication topology manager
+Documentation=https://github.com/percona/orchestrator
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{ orchestrator_home }}
+ExecStart={{ orchestrator_bin }} --config={{ orchestrator_config }} http
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=16384
+
+[Install]
+WantedBy=multi-user.target

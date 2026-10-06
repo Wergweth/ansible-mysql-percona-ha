@@ -1,0 +1,18 @@
+---
+# Variant B: Percona XtraDB Cluster 8.4 (Galera), ProxySQL, PMM.
+#
+# Node roles only. Addresses and server_id - in host_vars/.
+# The first node of the pxc group bootstraps a new cluster.
+all:
+  children:
+    pxc:
+      hosts:
+        node1:
+        node2:
+        node3:
+    proxysql:
+      hosts:
+        node3:
+    pmm_server:
+      hosts:
+        node3:

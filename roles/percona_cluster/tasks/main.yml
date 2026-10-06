@@ -1,0 +1,65 @@
+---
+# Packages, certificates and config on all nodes. Cluster startup - bootstrap.yml / join.yml / finalize.yml.
+
+- name: Check whether mysqld is already installed
+  ansible.builtin.stat:
+    path: /usr/sbin/mysqld
+  register: percona_cluster_mysqld
+
+- name: Install Percona XtraDB Cluster and tools
+  ansible.builtin.apt:
+    name: "{{ percona_cluster_packages }}"
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Stop mysqld started by the package installer
+  # postinst brings the node up as a separate single-node cluster;
+  # we form the cluster ourselves, in the right order. Only on the first install:
+  # on a running cluster the nodes are left alone.
+  ansible.builtin.systemd_service:
+    name: mysql
+    state: stopped
+  when: not percona_cluster_mysqld.stat.exists
+
+- name: Read the wsrep state if mysqld is running
+  ansible.mysql.mysql_query:
+    login_unix_socket: "{{ mysql_socket }}"
+    query: "SHOW GLOBAL STATUS LIKE 'wsrep_cluster_status'"
+  register: percona_cluster_wsrep
+  changed_when: false
+  failed_when: false
+
+- name: Is the node in the primary component of the cluster?
+  ansible.builtin.set_fact:
+    percona_cluster_primary: >-
+      {{ (percona_cluster_wsrep.query_result | default([[]]))[0]
+         | selectattr('Value', 'eq', 'Primary') | list | length > 0 }}
+
+- name: The cluster is already formed if at least one node is in Primary
+  ansible.builtin.set_fact:
+    percona_cluster_running: >-
+      {{ ansible_play_hosts | map('extract', hostvars, 'percona_cluster_primary')
+         | select | list | length > 0 }}
+
+- name: Cluster certificates
+  ansible.builtin.import_tasks: certs.yml
+
+- name: The mysqld config
+  ansible.builtin.template:
+    src: zz-ansible.cnf.j2
+    dest: "{{ mysql_conf_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart mysql
+
+- name: Restart nodes of a running cluster one at a time if the config changed
+  ansible.builtin.meta: flush_handlers
+
+- name: Cluster state before startup
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'The cluster is already running: running nodes stay as is, stopped ones will join'
+         if percona_cluster_running else 'No cluster yet: the first node will bootstrap a new one' }}
+  run_once: true

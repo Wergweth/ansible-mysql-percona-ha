@@ -1,0 +1,7 @@
+---
+percona_server_packages:
+  - percona-server-server
+  - percona-server-client
+  - percona-toolkit
+  - percona-xtrabackup-84
+  - sysbench

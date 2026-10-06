@@ -1,0 +1,8 @@
+---
+# Note: on a live cluster restarting the source means write downtime,
+# and with Orchestrator running - a failover. When changing my.cnf on a live lab,
+# switch the source first (orc -c graceful-master-takeover).
+- name: Restart mysql
+  ansible.builtin.systemd_service:
+    name: mysql
+    state: restarted

@@ -1,0 +1,27 @@
+---
+# Variant A: source + replicas.
+
+# --- node roles ---------------------------------------------------------------
+repl_source_host: "{{ groups['source'] | first }}"
+# Source candidate: durability 1/1 and semi-sync acknowledgements.
+# Exceptions are set in the inventory (node3).
+promotion_candidate: true
+
+# --- replication --------------------------------------------------------------
+repl_user: repl
+repl_password: "{{ vault_repl_password }}"
+# fast detection of a broken connection (Orchestrator recommendations)
+repl_net_timeout: 4          # replica_net_timeout, default 60
+repl_heartbeat_period: 2     # strictly less than repl_net_timeout
+repl_connect_retry: 1        # seconds between attempts, default 60
+repl_retry_count: 86400      # default 10: after that the IO thread gives up
+
+# --- semi-sync ----------------------------------------------------------------
+semisync_enabled: true
+semisync_timeout_ms: 10000
+semisync_wait_for_replica_count: 1
+
+# --- ProxySQL and PMM ---------------------------------------------------------
+proxysql_backend_mode: replication
+proxysql_backend_group: percona
+pmm_cluster_name: async-lab

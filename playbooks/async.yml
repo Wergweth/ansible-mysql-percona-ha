@@ -1,0 +1,67 @@
+---
+# Variant A: Percona Server 8.4 - source + replicas (GTID, semi-sync),
+# ProxySQL (R/W split), Orchestrator, PMM.
+#
+#   ansible-playbook playbooks/async.yml
+#   ansible-playbook playbooks/async.yml --tags proxysql
+
+- name: OS preparation
+  hosts: all
+  become: true
+  any_errors_fatal: true
+  tags: [os]
+  roles:
+    - common
+
+- name: Percona Server
+  hosts: percona
+  become: true
+  any_errors_fatal: true
+  tags: [mysql]
+  roles:
+    - percona_server
+
+- name: Source - open writes, create databases and users
+  hosts: source
+  become: true
+  gather_facts: false
+  tags: [replication]
+  roles:
+    - percona_replication
+    - mysql_objects
+
+- name: Replicas - connect to the source
+  hosts: replica
+  become: true
+  gather_facts: false
+  tags: [replication]
+  roles:
+    - percona_replication
+
+- name: ProxySQL
+  hosts: proxysql
+  become: true
+  tags: [proxysql]
+  roles:
+    - proxysql
+
+- name: Orchestrator
+  hosts: orchestrator
+  become: true
+  tags: [orchestrator]
+  roles:
+    - orchestrator
+
+- name: PMM Server
+  hosts: pmm_server
+  become: true
+  tags: [pmm]
+  roles:
+    - pmm_server
+
+- name: PMM Client
+  hosts: percona
+  become: true
+  tags: [pmm]
+  roles:
+    - pmm_client

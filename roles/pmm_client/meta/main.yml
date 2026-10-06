@@ -1,0 +1,4 @@
+---
+# pmm-client is installed from the pmm3-client repository
+dependencies:
+  - role: percona_repo

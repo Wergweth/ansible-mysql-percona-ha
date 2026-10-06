@@ -1,0 +1,58 @@
+---
+# MySQL accounts. Passwords come from vault.
+mysql_users:
+  - name: repl
+    host: "{{ lab_subnet_mask }}"
+    password: "{{ vault_repl_password }}"
+    grants:
+      - { priv: "REPLICATION SLAVE, REPLICATION CLIENT", db: "*.*" }
+
+  - name: pmm
+    host: localhost
+    password: "{{ vault_pmm_password }}"
+    grants:
+      - { priv: "SELECT, PROCESS, REPLICATION CLIENT, RELOAD, BACKUP_ADMIN", db: "*.*" }
+      - { priv: "SELECT, UPDATE, DELETE, DROP", db: "performance_schema.*" }
+
+  - name: sb
+    host: "{{ lab_subnet_mask }}"
+    password: "{{ vault_sb_password }}"
+    grants:
+      - { priv: "ALL", db: "sbtest.*" }
+
+  - name: bkp
+    host: localhost
+    password: "{{ vault_bkp_password }}"
+    grants:
+      - { priv: "BACKUP_ADMIN, PROCESS, RELOAD, LOCK TABLES, REPLICATION CLIENT", db: "*.*" }
+      - { priv: "SELECT", db: "performance_schema.*" }
+
+  - name: dba
+    host: "{{ lab_subnet_mask }}"
+    password: "{{ vault_dba_password }}"
+    grants:
+      - { priv: "SELECT, PROCESS, REPLICATION CLIENT, REPLICATION SLAVE, SHOW VIEW, SHOW DATABASES", db: "*.*" }
+      - { priv: "SELECT, UPDATE, DELETE, DROP", db: "performance_schema.*" }
+      - { priv: "EXECUTE", db: "sys.*" }
+
+  - name: osc
+    host: "{{ lab_subnet_mask }}"
+    password: "{{ vault_osc_password }}"
+    grants:
+      - { priv: "ALL", db: "sbtest.*" }
+      - { priv: "PROCESS, REPLICATION CLIENT, REPLICATION SLAVE, SYSTEM_VARIABLES_ADMIN, TRIGGER", db: "*.*" }
+
+  # ProxySQL: read_only and lag (variant A), wsrep state (variant B)
+  - name: proxysql_monitor
+    host: "{{ lab_subnet_mask }}"
+    password: "{{ vault_proxysql_monitor_password }}"
+    grants:
+      - { priv: "REPLICATION CLIENT", db: "*.*" }
+      - { priv: "SELECT", db: "performance_schema.*" }
+
+  - name: orchestrator
+    host: "{{ lab_subnet_mask }}"
+    password: "{{ vault_orchestrator_password }}"
+    grants:
+      - { priv: "SUPER, PROCESS, REPLICATION SLAVE, REPLICATION CLIENT, RELOAD", db: "*.*" }
+      - { priv: "SELECT", db: "mysql.slave_master_info" }

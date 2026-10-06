@@ -1,0 +1,25 @@
+---
+# Secrets template. Kept outside group_vars so Ansible does not pick up the placeholders.
+#
+#   cp vault.example.yml inventories/group_vars/all/vault.yml
+#   vim inventories/group_vars/all/vault.yml          # your own values
+#   openssl rand -base64 32 > .vault_pass && chmod 600 .vault_pass
+#   ansible-vault encrypt inventories/group_vars/all/vault.yml
+#
+# Passwords - letters, digits, '-' and '_' only (they go into URLs, cnf and SQL);
+# the common role checks this before deployment. Generate: openssl rand -hex 16
+
+# MySQL users
+vault_repl_password: CHANGE_ME
+vault_pmm_password: CHANGE_ME
+vault_sb_password: CHANGE_ME
+vault_bkp_password: CHANGE_ME
+vault_dba_password: CHANGE_ME
+vault_osc_password: CHANGE_ME
+vault_proxysql_monitor_password: CHANGE_ME
+vault_orchestrator_password: CHANGE_ME
+
+# admin interfaces
+vault_proxysql_admin_password: CHANGE_ME
+vault_orchestrator_http_password: CHANGE_ME
+vault_pmm_admin_password: CHANGE_ME

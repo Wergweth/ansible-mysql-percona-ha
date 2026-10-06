@@ -1,0 +1,10 @@
+---
+# One task file per node role: source or replica (from the inventory).
+# import, not include: play tags must reach the tasks.
+- name: Source
+  ansible.builtin.import_tasks: source.yml
+  when: inventory_hostname == repl_source_host
+
+- name: Replica
+  ansible.builtin.import_tasks: replica.yml
+  when: inventory_hostname != repl_source_host

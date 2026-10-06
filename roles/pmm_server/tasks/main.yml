@@ -1,0 +1,95 @@
+---
+- name: Install Docker
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - python3-docker
+    state: present
+
+- name: Docker service is started
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Check whether the PMM Server image exists
+  community.docker.docker_image_info:
+    name: "{{ pmm_server_image }}"
+  register: pmm_server_image_info
+
+- name: Get the PMM Server image
+  when: pmm_server_image_info.images | length == 0
+  block:
+    - name: Look for the image archive in the artifacts directory
+      ansible.builtin.stat:
+        path: "{{ pmm_server_image_archive }}"
+        get_checksum: false
+      delegate_to: localhost
+      become: false
+      register: pmm_server_archive_local
+
+    - name: Load the image from the archive
+      when: pmm_server_archive_local.stat.exists
+      block:
+        - name: Copy the archive to the node
+          ansible.builtin.copy:
+            src: "{{ pmm_server_image_archive }}"
+            dest: /var/tmp/pmm-server.tar.gz
+            mode: "0644"
+
+        - name: Load the image into Docker
+          ansible.builtin.command: docker load -i /var/tmp/pmm-server.tar.gz
+          changed_when: true
+
+        - name: Remove the archive from the node
+          ansible.builtin.file:
+            path: /var/tmp/pmm-server.tar.gz
+            state: absent
+
+    - name: Pull the image from Docker Hub
+      when: not pmm_server_archive_local.stat.exists
+      community.docker.docker_image_pull:
+        name: "{{ pmm_server_image }}"
+
+- name: Volume for PMM data
+  community.docker.docker_volume:
+    name: "{{ pmm_server_volume }}"
+
+- name: PMM Server container
+  community.docker.docker_container:
+    name: "{{ pmm_server_container }}"
+    image: "{{ pmm_server_image }}"
+    pull: never
+    state: started
+    restart_policy: unless-stopped
+    published_ports:
+      - "{{ pmm_server_port }}:8443"
+    volumes:
+      - "{{ pmm_server_volume }}:/srv"
+    env:
+      PMM_ENABLE_UPDATES: "0"
+
+- name: Wait for the PMM API
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:{{ pmm_server_port }}/v1/server/readyz"
+    validate_certs: false
+  register: pmm_server_ready
+  retries: 30
+  delay: 10
+  until: pmm_server_ready.status == 200
+
+- name: Set the PMM admin password
+  # PMM 3 generates a password on first start; set our own from vault
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ pmm_server_container }}"
+      - change-admin-password
+      - "{{ pmm_admin_password }}"
+  changed_when: false
+  no_log: true
+
+- name: PMM UI address
+  ansible.builtin.debug:
+    msg: "PMM UI: https://{{ ansible_host }}:{{ pmm_server_port }}  (login {{ pmm_admin_user }})"

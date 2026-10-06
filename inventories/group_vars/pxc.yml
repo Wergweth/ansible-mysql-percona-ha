@@ -1,0 +1,12 @@
+---
+# Variant B: Percona XtraDB Cluster 8.4.
+
+# main Percona repository for this variant
+percona_repo_server: pxc-84-lts
+
+pxc_cluster_name: pxc-lab
+
+# --- ProxySQL and PMM ---------------------------------------------------------
+proxysql_backend_mode: galera
+proxysql_backend_group: pxc
+pmm_cluster_name: pxc-lab

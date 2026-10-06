@@ -1,0 +1,33 @@
+---
+# The package is taken from artifacts/ if it is there, otherwise downloaded from GitHub.
+# In both cases SHA256 is verified (matches the signed index of repo.proxysql.com).
+# There is no build for resolute (26.04) - the noble (24.04) build installs fine.
+proxysql_version: "3.0.11"
+proxysql_deb_file: "proxysql_{{ proxysql_version }}-ubuntu24_amd64.deb"
+proxysql_deb_url: "https://github.com/sysown/proxysql/releases/download/v{{ proxysql_version }}/{{ proxysql_deb_file }}"
+proxysql_deb_sha256: cda9e28707c944ef673dac2a37b7d0c96b5d11c8df49daccaf377495c8ea69ff
+
+proxysql_admin_user: admin
+proxysql_admin_port: 6032
+proxysql_mysql_port: 6033
+proxysql_threads: 2
+proxysql_server_version: "8.4.11"
+
+proxysql_monitor_user: proxysql_monitor
+
+# replication - async/semi-sync (node role by read_only)
+# galera      - PXC (node role by wsrep state, single writer)
+# Set in the variant's group_vars together with the backend group.
+proxysql_backend_mode: replication
+proxysql_backend_group: percona
+
+proxysql_writer_hostgroup: 10
+proxysql_reader_hostgroup: 20
+proxysql_backup_writer_hostgroup: 30
+proxysql_offline_hostgroup: 40
+proxysql_max_replication_lag: 10
+proxysql_galera_max_transactions_behind: 100
+
+# which users from mysql_users connect through ProxySQL
+proxysql_app_users:
+  - sb

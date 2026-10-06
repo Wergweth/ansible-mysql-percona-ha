@@ -1,0 +1,26 @@
+---
+# proxysql.cnf is read only when proxysql.db does not exist,
+# the standard way to re-read it is proxysql-initial
+- name: Stop proxysql
+  ansible.builtin.systemd_service:
+    name: proxysql
+    state: stopped
+  listen: Reinitialize proxysql
+
+- name: Start proxysql with --initial
+  ansible.builtin.systemd_service:
+    name: proxysql-initial
+    state: restarted
+  listen: Reinitialize proxysql
+
+- name: Wait for proxysql admin
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ proxysql_admin_port }}"
+    timeout: 30
+  listen: Apply proxysql config
+
+- name: Run proxysql config
+  ansible.builtin.shell: mysql --defaults-file=/root/.proxysql-admin.cnf < /etc/proxysql-ansible.sql
+  changed_when: true
+  listen: Apply proxysql config

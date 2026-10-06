@@ -1,0 +1,4 @@
+---
+# the main repository pxc-84-lts is set in group_vars/pxc.yml
+dependencies:
+  - role: percona_repo

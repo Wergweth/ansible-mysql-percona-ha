@@ -1,0 +1,16 @@
+---
+# Main repository: ps-84-lts (variant A) or pxc-84-lts (variant B, overridden in group_vars/pxc.yml).
+percona_repo_server: ps-84-lts
+
+# Extra repositories:
+#   pt          - Percona Toolkit
+#   pxb-84-lts  - XtraBackup 8.4 (major version matches the server)
+#   tools       - sysbench and others
+#   pmm3-client - PMM 3 agent
+percona_repo_extra:
+  - pt
+  - pxb-84-lts
+  - tools
+  - pmm3-client
+
+percona_repo_release_url: https://repo.percona.com/apt/percona-release_latest.generic_all.deb

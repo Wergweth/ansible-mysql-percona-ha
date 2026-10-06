@@ -1,0 +1,14 @@
+# secrets
+.vault_pass
+inventories/group_vars/all/vault.yml
+
+# large binaries and generated certificates (see artifacts/README.md)
+artifacts/*
+!artifacts/README.md
+
+# local experiment scripts
+scripts/
+
+*.retry
+*.log
+.ansible/

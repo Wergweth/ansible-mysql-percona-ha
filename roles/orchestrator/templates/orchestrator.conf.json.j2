@@ -1,0 +1,35 @@
+{
+  "Debug": false,
+  "ListenAddress": ":{{ orchestrator_port }}",
+  "AuthenticationMethod": "basic",
+  "HTTPAuthUser": {{ orchestrator_http_user | to_json }},
+  "HTTPAuthPassword": {{ orchestrator_http_password | to_json }},
+
+  "BackendDB": "sqlite",
+  "SQLite3DataFile": "{{ orchestrator_data_dir }}/orchestrator.sqlite3",
+
+  "MySQLTopologyCredentialsConfigFile": "{{ orchestrator_topology_cnf }}",
+  "DefaultInstancePort": 3306,
+  "InstancePollSeconds": 5,
+  "DiscoverByShowSlaveHosts": true,
+
+  "HostnameResolveMethod": "none",
+  "MySQLHostnameResolveMethod": "none",
+
+  "DetectPromotionRuleQuery": "SELECT IF(@@GLOBAL.innodb_flush_log_at_trx_commit = 1 AND @@GLOBAL.sync_binlog = 1, 'neutral', 'must_not')",
+  "DetectSemiSyncEnforcedQuery": "SELECT @@GLOBAL.rpl_semi_sync_replica_enabled",
+
+  "RecoverMasterClusterFilters": [".*"],
+  "RecoverIntermediateMasterClusterFilters": [".*"],
+  "RecoveryPeriodBlockSeconds": {{ orchestrator_recovery_block_seconds }},
+  "ApplyMySQLPromotionAfterMasterFailover": true,
+  "DelayMasterPromotionIfSQLThreadNotUpToDate": true,
+  "DetachLostReplicasAfterMasterFailover": true,
+  "UseSuperReadOnly": true,
+  "RecoverNonWriteableMaster": true,
+
+  "ProcessesShellCommand": "bash",
+  "PreFailoverProcesses": [
+    "/usr/local/bin/orchestrator-proxysql-fence {failureType} '{command}' {failedHost}"
+  ]
+}

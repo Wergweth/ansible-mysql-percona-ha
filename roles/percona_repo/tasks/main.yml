@@ -1,0 +1,63 @@
+---
+- name: Check whether percona-release is installed
+  ansible.builtin.stat:
+    path: /usr/bin/percona-release
+  register: percona_repo_release_bin
+
+- name: Install percona-release
+  when: not percona_repo_release_bin.stat.exists
+  block:
+    - name: Download the percona-release package
+      ansible.builtin.get_url:
+        url: "{{ percona_repo_release_url }}"
+        dest: /var/tmp/percona-release.deb
+        mode: "0644"
+        timeout: 60
+      register: percona_repo_release_dl
+      retries: 3
+      delay: 5
+      until: percona_repo_release_dl is succeeded
+
+    - name: Install the percona-release package
+      ansible.builtin.apt:
+        deb: /var/tmp/percona-release.deb
+      register: percona_repo_release_install
+      retries: 20
+      delay: 15
+      until: percona_repo_release_install is succeeded
+
+- name: Find enabled Percona repositories
+  ansible.builtin.find:
+    paths: /etc/apt/sources.list.d
+    # active ones only: setup disables repositories by renaming them to *.bak
+    patterns:
+      - "percona-*-release.list"
+      - "percona-*-release.sources"
+  register: percona_repo_files
+
+- name: Collect enabled repositories into a list
+  # percona-ps-84-lts-release.list -> ps-84-lts
+  ansible.builtin.set_fact:
+    percona_repo_enabled: >-
+      {{ percona_repo_files.files | map(attribute='path') | map('basename')
+         | map('regex_replace', '^percona-(.+)-release\..*$', '\1') | list }}
+
+# setup disables ALL Percona repositories and enables the given one,
+# so it runs first and only when the main repository is not enabled yet.
+- name: Enable the main repository {{ percona_repo_server }}
+  ansible.builtin.command: "percona-release setup -y {{ percona_repo_server }}"
+  when: percona_repo_server not in percona_repo_enabled
+  register: percona_repo_setup
+  changed_when: true
+  notify: Update apt cache
+
+- name: Enable extra repositories
+  ansible.builtin.command: "percona-release enable {{ item }} release"
+  loop: "{{ percona_repo_extra }}"
+  # after setup all previous repositories are disabled - enable them again
+  when: item not in percona_repo_enabled or percona_repo_setup is changed
+  changed_when: true
+  notify: Update apt cache
+
+- name: Update the apt cache if repositories changed
+  ansible.builtin.meta: flush_handlers
