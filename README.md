@@ -1,4 +1,4 @@
-# percona-lab
+# ansible-mysql-percona-ha
 
 An Ansible project that deploys one of two highly available MySQL variants based on Percona on three Ubuntu nodes:
 
